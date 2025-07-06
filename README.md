@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ```python
 import asyncio
 from pydantic import BaseModel, Field
-from parallel_llm import ParallelGPTFramework
+from parallel_llm import ParallelLLM
 
 class ProductRecommendation(BaseModel):
     product_name: str = Field(description="Name of the recommended product")
@@ -40,7 +40,7 @@ class ProductRecommendation(BaseModel):
 
 async def main():
     # Initialize framework
-    framework = ParallelGPTFramework(api_key="your-openai-api-key")
+    framework = ParallelLLM(api_key="your-openai-api-key")
     
     # Define your query
     messages = [
@@ -90,11 +90,11 @@ Choose the method that fits your needs:
 
 ## API Reference
 
-### ParallelGPTFramework
+### ParallelLLM
 
 #### Constructor
 ```python
-ParallelGPTFramework(api_key: str, config: Optional[FrameworkConfig] = None)
+ParallelLLM(api_key: str, config: Optional[FrameworkConfig] = None)
 ```
 
 #### Main Methods
@@ -156,7 +156,7 @@ result = completion.choices[0].message.parsed
 
 ### Basic Usage (Direct Method)
 ```python
-framework = ParallelGPTFramework(api_key="your-key")
+framework = ParallelLLM(api_key="your-key")
 
 result = await framework.parse(
     model="gpt-4o-mini",
@@ -175,7 +175,7 @@ config = FrameworkConfig(
     max_retries=3
 )
 
-framework = ParallelGPTFramework(api_key="your-key", config=config)
+framework = ParallelLLM(api_key="your-key", config=config)
 ```
 
 ### Runtime Configuration Updates

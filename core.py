@@ -3,6 +3,7 @@ Core ParallelLLM class with main processing logic.
 """
 
 import asyncio
+import logging
 from typing import Any, Dict, List, Optional, Type, Union
 from pydantic import BaseModel
 import openai
@@ -17,6 +18,8 @@ from .errors import (
 )
 from .prompts import DECISION_MAKER_PROMPT
 from .interfaces import ParallelBeta
+
+logger = logging.getLogger(__name__)
 
 
 class ParallelLLM:
@@ -62,6 +65,9 @@ class ParallelLLM:
         """
         for attempt in range(self.config.max_retries + 1):
             try:
+                logger.debug(f"Making API request (attempt {attempt + 1})")
+                
+                # Make the async request
                 completion = await asyncio.wait_for(
                     self.openai_client.beta.chat.completions.parse(
                         model=model,
@@ -73,24 +79,29 @@ class ParallelLLM:
                     timeout=self.config.timeout
                 )
                 
+                logger.debug(f"API request successful")
                 return completion.choices[0].message.parsed
                 
             except asyncio.TimeoutError:
+                logger.warning(f"Request timed out (attempt {attempt + 1})")
                 if attempt == self.config.max_retries:
                     raise ProcessingError(f"Request timed out after {self.config.max_retries + 1} attempts")
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
                 
             except openai.RateLimitError as e:
+                logger.warning(f"Rate limit error (attempt {attempt + 1}): {e}")
                 if attempt == self.config.max_retries:
                     raise handle_openai_error(e)
                 await asyncio.sleep(2 ** attempt)
                 
             except openai.APIError as e:
+                logger.error(f"API error (attempt {attempt + 1}): {e}")
                 if attempt == self.config.max_retries:
                     raise handle_openai_error(e)
                 await asyncio.sleep(2 ** attempt)
                 
             except Exception as e:
+                logger.error(f"Unexpected error (attempt {attempt + 1}): {e}")
                 if attempt == self.config.max_retries:
                     raise ProcessingError(f"Unexpected error: {e}")
                 await asyncio.sleep(2 ** attempt)
@@ -104,6 +115,8 @@ class ParallelLLM:
         **kwargs
     ) -> List[Any]:
         """Process multiple parallel requests to the same prompt."""
+        logger.info(f"Starting {self.config.num_processors} parallel requests")
+        
         try:
             # Create tasks for parallel processing
             tasks = []
@@ -123,21 +136,25 @@ class ParallelLLM:
             # Wait for all tasks to complete
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Filter out exceptions
+            # Filter out exceptions and log them
             successful_results = []
             failed_count = 0
-            for result in results:
+            for i, result in enumerate(results):
                 if isinstance(result, Exception):
+                    logger.error(f"Processor {i} failed: {result}")
                     failed_count += 1
                 else:
                     successful_results.append(result)
+                    logger.debug(f"Processor {i} completed successfully")
             
             if not successful_results:
                 raise ProcessingError("All parallel processors failed", failed_processors=failed_count)
                 
+            logger.info(f"Parallel processing completed: {len(successful_results)} successful results")
             return successful_results
             
         except Exception as e:
+            logger.error(f"Parallel processing failed: {e}")
             if isinstance(e, ProcessingError):
                 raise e
             raise ProcessingError(f"Parallel processing error: {e}")
@@ -151,8 +168,11 @@ class ParallelLLM:
         """Use decision maker to select/synthesize final response."""
         try:
             if len(responses) == 1:
+                logger.info("Only one response available, returning it directly")
                 return responses[0]
                 
+            logger.info(f"Decision maker analyzing {len(responses)} responses")
+            
             # Prepare responses for decision maker
             response_texts = []
             for i, response in enumerate(responses):
@@ -169,7 +189,7 @@ class ParallelLLM:
             decision_messages = [
                 {
                     "role": "system", 
-                    "content": self.config.decision_maker_prompt
+                    "content": DECISION_MAKER_PROMPT
                 },
                 {
                     "role": "user",
@@ -191,9 +211,12 @@ Please analyze these responses and return the best one or synthesize a better re
                 temperature=self.config.decision_maker_temperature
             )
             
+            logger.info("Decision maker completed successfully")
             return decision_response
             
         except Exception as e:
+            logger.error(f"Decision maker failed: {e}")
+            logger.info("Falling back to first successful response")
             if responses:
                 return responses[0]
             else:
@@ -220,6 +243,8 @@ Please analyze these responses and return the best one or synthesize a better re
         Returns:
             Parsed response in the specified format
         """
+        logger.info(f"Starting parallel GPT processing with {self.config.num_processors} processors")
+        
         try:
             # Validate input parameters
             if not model:
@@ -249,6 +274,7 @@ Please analyze these responses and return the best one or synthesize a better re
             
             # Step 3: Validate the final response matches expected format
             if not isinstance(final_response, response_format):
+                logger.warning("Final response type mismatch, attempting to parse")
                 try:
                     if hasattr(final_response, 'model_dump'):
                         final_response = response_format.model_validate(final_response.model_dump())
@@ -257,43 +283,17 @@ Please analyze these responses and return the best one or synthesize a better re
                 except Exception as e:
                     raise ValidationError(f"Failed to validate final response: {e}")
             
+            logger.info("Parallel GPT processing completed successfully")
             return final_response
             
         except (ValidationError, ConfigurationError, ProcessingError, DecisionMakerError) as e:
+            logger.error(f"Parallel GPT processing failed: {e}")
             raise e
         except Exception as e:
+            logger.error(f"Unexpected error in parallel GPT processing: {e}")
             raise ProcessingError(f"Unexpected error: {e}")
 
-    async def parse(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        response_format: Type[BaseModel],
-        temperature: float = 0,
-        **kwargs
-    ) -> Any:
-        """
-        Direct method for parallel parsing (alternative to beta interface).
-        
-        Args:
-            model: Model name to use
-            messages: List of message dictionaries
-            response_format: Pydantic model for structured output
-            temperature: Temperature for generation
-            **kwargs: Additional parameters to pass to OpenAI API
-            
-        Returns:
-            Parsed response in the specified format (direct result, not wrapped)
-        """
-        return await self._parse_internal(
-            model=model,
-            messages=messages,
-            response_format=response_format,
-            temperature=temperature,
-            **kwargs
-        )
-
-    # Configuration management methods
+    # Configuration management methods (delegate to config manager)
     def update_config(self, **kwargs) -> None:
         """Update framework configuration."""
         self.config_manager.update_config(**kwargs)
@@ -301,6 +301,38 @@ Please analyze these responses and return the best one or synthesize a better re
     def get_config(self) -> FrameworkConfig:
         """Get current framework configuration."""
         return self.config_manager.get_config()
+    
+    def set_decision_maker_prompt(self, prompt: str) -> None:
+        """Set custom decision maker prompt."""
+        self.config_manager.set_decision_maker_prompt(prompt)
+    
+    def reset_decision_maker_prompt(self) -> None:
+        """Reset decision maker prompt to default."""
+        self.config_manager.reset_decision_maker_prompt()
+    
+    def set_num_processors(self, num_processors: int) -> None:
+        """Set number of parallel processors."""
+        self.config_manager.set_num_processors(num_processors)
+    
+    def set_timeout(self, timeout: float) -> None:
+        """Set request timeout."""
+        self.config_manager.set_timeout(timeout)
+    
+    def set_max_retries(self, max_retries: int) -> None:
+        """Set maximum number of retries."""
+        self.config_manager.set_max_retries(max_retries)
+    
+    def set_decision_maker_model(self, model: str) -> None:
+        """Set decision maker model."""
+        self.config_manager.set_decision_maker_model(model)
+    
+    def set_decision_maker_temperature(self, temperature: float) -> None:
+        """Set decision maker temperature."""
+        self.config_manager.set_decision_maker_temperature(temperature)
+    
+    def enable_logging(self, enabled: bool = True, level: str = "INFO") -> None:
+        """Enable or disable logging."""
+        self.config_manager.enable_logging(enabled, level)
     
     def get_config_summary(self) -> dict:
         """Get a summary of current configuration."""

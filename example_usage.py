@@ -11,7 +11,7 @@ import os
 from typing import List
 from pydantic import BaseModel, Field
 
-from parallel_gpt_framework import ParallelGPTFramework, FrameworkConfig
+from parallel_gpt_framework import ParallelLLM, FrameworkConfig
 
 
 class ProductRecommendation(BaseModel):
@@ -45,7 +45,7 @@ async def example_calling_methods():
         print("Please set OPENAI_API_KEY environment variable")
         return
     
-    framework = ParallelGPTFramework(api_key=api_key)
+    framework = ParallelLLM(api_key=api_key)
     
     messages = [
         {"role": "system", "content": "You are a product recommendation expert."},
@@ -85,7 +85,7 @@ async def example_pier_walking_distance():
         print("Please set OPENAI_API_KEY environment variable")
         return
     
-    framework = ParallelGPTFramework(api_key=api_key)
+    framework = ParallelLLM(api_key=api_key)
     
     system_prompt = """You are a local San Francisco walking route expert and travel guide. 
     You have extensive knowledge of San Francisco's geography, neighborhoods, walking routes, 
@@ -145,7 +145,7 @@ async def example_configuration():
         max_retries=3
     )
     
-    framework = ParallelGPTFramework(api_key=api_key, config=config)
+    framework = ParallelLLM(api_key=api_key, config=config)
     
     print("Configuration:")
     config_summary = framework.get_config_summary()

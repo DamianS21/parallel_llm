@@ -87,7 +87,7 @@ __all__ = [
     "ParallelChat",
     "ParallelBeta",
     
-    # Convenience function
+    # Convenience functions
     "create_framework",
 ]
 
