@@ -11,7 +11,7 @@ import os
 from typing import List
 from pydantic import BaseModel, Field
 
-from parallel_gpt_framework import ParallelLLM, FrameworkConfig
+from parallel_llm import ParallelLLM, FrameworkConfig
 
 
 class ProductRecommendation(BaseModel):

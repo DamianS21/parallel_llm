@@ -11,13 +11,13 @@ from openai import AsyncOpenAI
 import json
 import time
 
-from .config import FrameworkConfig, ConfigurationManager
-from .errors import (
+from config import FrameworkConfig, ConfigurationManager, DECISION_MAKER_PROMPT
+from errors import (
     ParallelLLMError, ConfigurationError, ProcessingError, 
-    DecisionMakerError, ValidationError, handle_openai_error
+    DecisionMakerError, ValidationError, APIError, RateLimitError,
+    TimeoutError, AuthenticationError, handle_openai_error
 )
-from .prompts import DECISION_MAKER_PROMPT
-from .interfaces import ParallelBeta
+from interfaces import ParallelBeta
 
 logger = logging.getLogger(__name__)
 
@@ -91,20 +91,38 @@ class ParallelLLM:
             except openai.RateLimitError as e:
                 logger.warning(f"Rate limit error (attempt {attempt + 1}): {e}")
                 if attempt == self.config.max_retries:
-                    raise handle_openai_error(e)
+                    raise e  # Let OpenAI errors bubble up directly
                 await asyncio.sleep(2 ** attempt)
                 
             except openai.APIError as e:
                 logger.error(f"API error (attempt {attempt + 1}): {e}")
                 if attempt == self.config.max_retries:
-                    raise handle_openai_error(e)
+                    raise e  # Let OpenAI errors bubble up directly
                 await asyncio.sleep(2 ** attempt)
+                
+            except openai.AuthenticationError as e:
+                logger.error(f"Authentication error (attempt {attempt + 1}): {e}")
+                raise e  # Don't retry authentication errors
                 
             except Exception as e:
                 logger.error(f"Unexpected error (attempt {attempt + 1}): {e}")
                 if attempt == self.config.max_retries:
                     raise ProcessingError(f"Unexpected error: {e}")
                 await asyncio.sleep(2 ** attempt)
+
+    def _is_priority_error(self, error: Exception) -> bool:
+        """Check if error should be prioritized (OpenAI errors take precedence)."""
+        return isinstance(error, (
+            openai.APIError, openai.RateLimitError, openai.AuthenticationError,
+            APIError, RateLimitError, TimeoutError, AuthenticationError
+        ))
+
+    def _get_first_priority_error(self, exceptions: List[Exception]) -> Exception:
+        """Get the first priority error from a list of exceptions."""
+        for exc in exceptions:
+            if self._is_priority_error(exc):
+                return exc
+        return exceptions[0] if exceptions else ProcessingError("All parallel processors failed")
 
     async def _process_parallel_requests(
         self,
@@ -136,28 +154,32 @@ class ParallelLLM:
             # Wait for all tasks to complete
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Filter out exceptions and log them
+            # Separate successful results from exceptions
             successful_results = []
-            failed_count = 0
+            failed_exceptions = []
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     logger.error(f"Processor {i} failed: {result}")
-                    failed_count += 1
+                    failed_exceptions.append(result)
                 else:
                     successful_results.append(result)
                     logger.debug(f"Processor {i} completed successfully")
             
             if not successful_results:
-                raise ProcessingError("All parallel processors failed", failed_processors=failed_count)
+                # All processors failed - raise the most relevant error
+                error_to_raise = self._get_first_priority_error(failed_exceptions)
+                logger.error(f"All {len(failed_exceptions)} processors failed with error: {error_to_raise}")
+                raise error_to_raise
                 
             logger.info(f"Parallel processing completed: {len(successful_results)} successful results")
             return successful_results
             
         except Exception as e:
-            logger.error(f"Parallel processing failed: {e}")
-            if isinstance(e, ProcessingError):
+            # Only catch and wrap truly unexpected errors
+            if self._is_priority_error(e) or isinstance(e, (ProcessingError, ValidationError, ConfigurationError)):
                 raise e
-            raise ProcessingError(f"Parallel processing error: {e}")
+            logger.error(f"Unexpected parallel processing error: {e}")
+            raise ProcessingError(f"Unexpected parallel processing error: {e}")
     
     async def _make_decision(
         self,
@@ -293,7 +315,7 @@ Please analyze these responses and return the best one or synthesize a better re
             logger.error(f"Unexpected error in parallel GPT processing: {e}")
             raise ProcessingError(f"Unexpected error: {e}")
 
-    # Configuration management methods (delegate to config manager)
+    # Configuration management methods
     def update_config(self, **kwargs) -> None:
         """Update framework configuration."""
         self.config_manager.update_config(**kwargs)
@@ -301,38 +323,6 @@ Please analyze these responses and return the best one or synthesize a better re
     def get_config(self) -> FrameworkConfig:
         """Get current framework configuration."""
         return self.config_manager.get_config()
-    
-    def set_decision_maker_prompt(self, prompt: str) -> None:
-        """Set custom decision maker prompt."""
-        self.config_manager.set_decision_maker_prompt(prompt)
-    
-    def reset_decision_maker_prompt(self) -> None:
-        """Reset decision maker prompt to default."""
-        self.config_manager.reset_decision_maker_prompt()
-    
-    def set_num_processors(self, num_processors: int) -> None:
-        """Set number of parallel processors."""
-        self.config_manager.set_num_processors(num_processors)
-    
-    def set_timeout(self, timeout: float) -> None:
-        """Set request timeout."""
-        self.config_manager.set_timeout(timeout)
-    
-    def set_max_retries(self, max_retries: int) -> None:
-        """Set maximum number of retries."""
-        self.config_manager.set_max_retries(max_retries)
-    
-    def set_decision_maker_model(self, model: str) -> None:
-        """Set decision maker model."""
-        self.config_manager.set_decision_maker_model(model)
-    
-    def set_decision_maker_temperature(self, temperature: float) -> None:
-        """Set decision maker temperature."""
-        self.config_manager.set_decision_maker_temperature(temperature)
-    
-    def enable_logging(self, enabled: bool = True, level: str = "INFO") -> None:
-        """Enable or disable logging."""
-        self.config_manager.enable_logging(enabled, level)
     
     def get_config_summary(self) -> dict:
         """Get a summary of current configuration."""
