@@ -4,7 +4,7 @@ Core ParallelLLM class with main processing logic.
 
 import asyncio
 from typing import Any, Dict, List, Optional, Type, Union
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import openai
 from openai import AsyncOpenAI
 import json
@@ -22,6 +22,25 @@ from .interfaces import ParallelBeta
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class ProcessingResult(BaseModel):
+    """Represents the result of processing a single request."""
+    success: bool = Field(description="Whether the processing was successful")
+    result: Optional[Any] = Field(default=None, description="The processed result if successful")
+    error: Optional[str] = Field(default=None, description="Error message if processing failed")
+    processor_id: Optional[str] = Field(default=None, description="ID of the processor that handled this request")
+
+
+def _create_reasoning_format(original_format: Type[BaseModel]) -> Type[BaseModel]:
+    """Create a new format that includes reasoning field."""
+    
+    class ReasoningFormat(original_format):
+        reasoning: str = Field(description="Step-by-step reasoning for this response")
+    
+    # Set the class name to be more descriptive
+    ReasoningFormat.__name__ = f"{original_format.__name__}WithReasoning"
+    return ReasoningFormat
 
 
 class ParallelLLM:
@@ -58,7 +77,6 @@ class ParallelLLM:
             model: Model name
             messages: Messages for the request
             response_format: Pydantic model for structured output
-            temperature: Temperature setting
             **kwargs: Additional API parameters
             
         Returns:
@@ -109,10 +127,14 @@ class ParallelLLM:
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
+        pass_reasoning: bool = False,
         **kwargs
     ) -> List[Any]:
         """Process multiple parallel requests to the same prompt."""
         try:
+            # Use reasoning format if requested
+            actual_format = _create_reasoning_format(response_format) if pass_reasoning else response_format
+            
             # Create tasks for parallel processing
             tasks = []
             for i in range(self.config.num_processors):
@@ -120,7 +142,7 @@ class ParallelLLM:
                     self._make_single_request(
                         model=model,
                         messages=messages,
-                        response_format=response_format,
+                        response_format=actual_format,
                         **kwargs
                     ),
                     name=f"processor_{i}"
@@ -133,15 +155,17 @@ class ParallelLLM:
             # Filter out exceptions
             successful_results = []
             failed_count = 0
-            for result in results:
+            for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     failed_count += 1
+                    logger.warning(f"Processor {i} failed: {result}")
                 else:
                     successful_results.append(result)
             
             if not successful_results:
                 raise ProcessingError("All parallel processors failed", failed_processors=failed_count)
-                
+            
+            logger.info(f"Parallel processing completed: {len(successful_results)} successful, {failed_count} failed")
             return successful_results
             
         except Exception as e:
@@ -190,7 +214,7 @@ Please analyze these responses and return the best one or synthesize a better re
                 }
             ]
             
-            # Make decision using the decision maker
+            # Decision maker always uses the original format
             decision_response = await self._make_single_request(
                 model=self.config.decision_maker_model,
                 messages=decision_messages,
@@ -202,7 +226,10 @@ Please analyze these responses and return the best one or synthesize a better re
             
         except Exception as e:
             if responses:
-                return responses[0]
+                # Return first response as fallback
+                fallback = responses[0]
+                logger.warning(f"Decision maker failed, using fallback response: {e}")
+                return fallback
             else:
                 raise DecisionMakerError(f"Decision maker failed and no fallback available: {e}")
 
@@ -211,7 +238,7 @@ Please analyze these responses and return the best one or synthesize a better re
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
-        temperature: float = 0,
+        pass_reasoning: bool = False,
         **kwargs
     ) -> Any:
         """
@@ -221,7 +248,7 @@ Please analyze these responses and return the best one or synthesize a better re
             model: Model name to use
             messages: List of message dictionaries
             response_format: Pydantic model for structured output
-            temperature: Temperature for generation
+            pass_reasoning: Whether to include reasoning in intermediate responses
             **kwargs: Additional parameters to pass to OpenAI API
             
         Returns:
@@ -243,6 +270,7 @@ Please analyze these responses and return the best one or synthesize a better re
                 model=model,
                 messages=messages,
                 response_format=response_format,
+                pass_reasoning=pass_reasoning,
                 **kwargs
             )
             
@@ -275,6 +303,7 @@ Please analyze these responses and return the best one or synthesize a better re
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
+        pass_reasoning: bool = False,
         **kwargs
     ) -> Any:
         """
@@ -284,7 +313,7 @@ Please analyze these responses and return the best one or synthesize a better re
             model: Model name to use
             messages: List of message dictionaries
             response_format: Pydantic model for structured output
-            temperature: Temperature for generation
+            pass_reasoning: Whether to include reasoning in intermediate responses for decision maker
             **kwargs: Additional parameters to pass to OpenAI API
             
         Returns:
@@ -294,6 +323,7 @@ Please analyze these responses and return the best one or synthesize a better re
             model=model,
             messages=messages,
             response_format=response_format,
+            pass_reasoning=pass_reasoning,
             **kwargs
         )
 

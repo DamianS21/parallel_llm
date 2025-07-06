@@ -3,31 +3,40 @@ Interface classes that mirror OpenAI's API structure for the Parallel GPT Framew
 """
 
 from typing import Any, Dict, List, Type, TYPE_CHECKING
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from .core import ParallelLLM
 
 
-class ParsedMessage:
+class ParsedMessage(BaseModel):
     """Mimics OpenAI's parsed message structure."""
     
-    def __init__(self, parsed_content: Any):
-        self.parsed = parsed_content
+    parsed: Any = Field(description="The parsed content of the message")
 
 
-class Choice:
+class Choice(BaseModel):
     """Mimics OpenAI's choice structure."""
     
-    def __init__(self, parsed_content: Any):
-        self.message = ParsedMessage(parsed_content)
+    message: ParsedMessage = Field(description="The parsed message")
+    
+    def __init__(self, parsed_content: Any = None, **data):
+        if parsed_content is not None:
+            super().__init__(message=ParsedMessage(parsed=parsed_content), **data)
+        else:
+            super().__init__(**data)
 
 
-class ParallelCompletion:
+class ParallelCompletion(BaseModel):
     """Mimics OpenAI's completion response structure."""
     
-    def __init__(self, parsed_content: Any):
-        self.choices = [Choice(parsed_content)]
+    choices: List[Choice] = Field(description="List of completion choices")
+    
+    def __init__(self, parsed_content: Any = None, **data):
+        if parsed_content is not None:
+            super().__init__(choices=[Choice(parsed_content)], **data)
+        else:
+            super().__init__(**data)
 
 
 class ParallelCompletionInterface:
@@ -41,6 +50,7 @@ class ParallelCompletionInterface:
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
+        pass_reasoning: bool = False,
         **kwargs
     ) -> ParallelCompletion:
         """
@@ -50,7 +60,7 @@ class ParallelCompletionInterface:
             model: Model name to use
             messages: List of message dictionaries
             response_format: Pydantic model for structured output
-            temperature: Temperature for generation
+            pass_reasoning: Whether to include reasoning in intermediate responses for decision maker
             **kwargs: Additional parameters to pass to OpenAI API
             
         Returns:
@@ -60,6 +70,7 @@ class ParallelCompletionInterface:
             model=model,
             messages=messages,
             response_format=response_format,
+            pass_reasoning=pass_reasoning,
             **kwargs
         )
         

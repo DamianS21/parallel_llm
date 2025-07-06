@@ -98,13 +98,13 @@ async def example_pier_walking_distance():
     
     try:
         analysis = await framework.parse(
-            model="gpt-4o-mini",
+            model="gpt-4o-search-preview",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
             response_format=WalkingDistanceAnalysis,
-            temperature=0.2
+            pass_reasoning=True
         )
         
         print("Walking Distance Analysis - Pier 39 to Pier 80")
@@ -161,7 +161,7 @@ async def main():
     print("Parallel GPT Framework Examples")
     print("=" * 40)
     
-    await example_calling_methods()
+    # await example_calling_methods()
     print("\n" + "=" * 40)
     await example_pier_walking_distance()
     print("\n" + "=" * 40)

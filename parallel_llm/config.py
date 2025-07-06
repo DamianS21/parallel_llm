@@ -2,46 +2,69 @@
 Configuration classes and utilities for the Parallel GPT Framework.
 """
 
-from dataclasses import dataclass
 from typing import Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
 import logging
 
 from .prompts import DECISION_MAKER_PROMPT
 
 
-@dataclass
-class FrameworkConfig:
+class FrameworkConfig(BaseModel):
     """Configuration for the parallel GPT framework."""
-    num_processors: int = 3
-    timeout: float = 30.0
-    max_retries: int = 2
-    decision_maker_model: str = "gpt-4o"
-    decision_maker_temperature: float = 0.1
-    decision_maker_prompt: str = DECISION_MAKER_PROMPT
-    enable_logging: bool = True
-    log_level: str = "INFO"
     
-    def __post_init__(self):
-        """Validate configuration parameters."""
-        from .errors import ConfigurationError
-        
-        if self.num_processors < 1:
-            raise ConfigurationError("Number of processors must be at least 1")
-        if self.timeout <= 0:
-            raise ConfigurationError("Timeout must be positive")
-        if self.max_retries < 0:
-            raise ConfigurationError("Max retries must be non-negative")
-        if self.decision_maker_temperature < 0 or self.decision_maker_temperature > 2:
-            raise ConfigurationError("Decision maker temperature must be between 0 and 2")
-        if self.log_level not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
-            raise ConfigurationError("Log level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL")
-        
-        # Configure logging if enabled
+    num_processors: int = Field(default=3, description="Number of parallel processors to use")
+    timeout: float = Field(default=30.0, description="Timeout for API requests in seconds")
+    max_retries: int = Field(default=2, description="Maximum number of retries for failed requests")
+    decision_maker_model: str = Field(default="gpt-4o", description="Model to use for decision making")
+    decision_maker_temperature: float = Field(default=0.1, description="Temperature for decision maker")
+    decision_maker_prompt: str = Field(default=DECISION_MAKER_PROMPT, description="Prompt for decision maker")
+    enable_logging: bool = Field(default=True, description="Whether to enable logging")
+    log_level: str = Field(default="INFO", description="Logging level")
+    
+    @field_validator('num_processors')
+    @classmethod
+    def validate_num_processors(cls, v):
+        if v < 1:
+            raise ValueError("Number of processors must be at least 1")
+        return v
+    
+    @field_validator('timeout')
+    @classmethod
+    def validate_timeout(cls, v):
+        if v <= 0:
+            raise ValueError("Timeout must be positive")
+        return v
+    
+    @field_validator('max_retries')
+    @classmethod
+    def validate_max_retries(cls, v):
+        if v < 0:
+            raise ValueError("Max retries must be non-negative")
+        return v
+    
+    @field_validator('decision_maker_temperature')
+    @classmethod
+    def validate_decision_maker_temperature(cls, v):
+        if v < 0 or v > 2:
+            raise ValueError("Decision maker temperature must be between 0 and 2")
+        return v
+    
+    @field_validator('log_level')
+    @classmethod
+    def validate_log_level(cls, v):
+        if v not in ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']:
+            raise ValueError("Log level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL")
+        return v
+    
+    @model_validator(mode='after')
+    def configure_logging(self):
+        """Configure logging if enabled."""
         if self.enable_logging:
             logging.basicConfig(
                 level=getattr(logging, self.log_level),
                 format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
+        return self
 
 
 class ConfigurationManager:
@@ -60,14 +83,12 @@ class ConfigurationManager:
         from .errors import ConfigurationError
         
         try:
-            for key, value in kwargs.items():
-                if hasattr(self.config, key):
-                    setattr(self.config, key, value)
-                else:
-                    raise ConfigurationError(f"Unknown config parameter: {key}")
+            # Create a new config instance with updated values
+            config_dict = self.config.model_dump()
+            config_dict.update(kwargs)
             
-            # Validate configuration after updates
-            self.config.__post_init__()
+            # Validate the new configuration
+            self.config = FrameworkConfig(**config_dict)
             
         except Exception as e:
             raise ConfigurationError(f"Configuration update failed: {e}")

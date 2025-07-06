@@ -116,9 +116,17 @@ result = await framework.parse(
     model="gpt-4o-mini",
     messages=messages,
     response_format=YourModel,
-    temperature=0
+    temperature=0,
+    pass_reasoning=False  # Optional: adds reasoning to intermediate responses
 )
 ```
+
+#### Parameters
+- `model`: OpenAI model name (e.g., "gpt-4o-mini")
+- `messages`: List of message dictionaries
+- `response_format`: Pydantic BaseModel for structured output
+- `pass_reasoning`: Boolean (default: False) - When True, intermediate responses include reasoning to help the decision maker choose better results
+- `**kwargs`: Additional OpenAI API parameters
 
 #### Configuration Methods
 
@@ -163,6 +171,20 @@ result = await framework.parse(
     messages=[{"role": "user", "content": "Hello!"}],
     response_format=YourPydanticModel
 )
+```
+
+### Using Reasoning for Better Decisions
+The pass_reasoning mode will pass reasoning[`str`] from each processing to give more context for decision maker. 
+
+```python
+# Enable reasoning to help the decision maker choose better responses
+result = await framework.parse(
+    model="gpt-4o-mini",
+    messages=messages,
+    response_format=YourPydanticModel,
+    pass_reasoning=True  # Adds reasoning to intermediate responses
+)
+# Final result is still in your original format (no reasoning field)
 ```
 
 ### Custom Configuration
