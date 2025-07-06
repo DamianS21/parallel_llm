@@ -9,6 +9,7 @@ import openai
 from openai import AsyncOpenAI
 import json
 import time
+import logging
 
 from .config import FrameworkConfig, ConfigurationManager
 from .errors import (
@@ -17,6 +18,10 @@ from .errors import (
 )
 from .prompts import DECISION_MAKER_PROMPT
 from .interfaces import ParallelBeta
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class ParallelLLM:
@@ -44,7 +49,6 @@ class ParallelLLM:
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
-        temperature: float,
         **kwargs
     ) -> Any:
         """
@@ -67,7 +71,6 @@ class ParallelLLM:
                         model=model,
                         messages=messages,
                         response_format=response_format,
-                        temperature=temperature,
                         **kwargs
                     ),
                     timeout=self.config.timeout
@@ -82,12 +85,18 @@ class ParallelLLM:
                 
             except openai.RateLimitError as e:
                 if attempt == self.config.max_retries:
-                    raise handle_openai_error(e)
+                    error = handle_openai_error(e)
+                    error_str = str(error)
+                    logger.error(f"OpenAI Rate Limit Error: {error_str}")
+                    raise error
                 await asyncio.sleep(2 ** attempt)
                 
             except openai.APIError as e:
                 if attempt == self.config.max_retries:
-                    raise handle_openai_error(e)
+                    error = handle_openai_error(e)
+                    error_str = str(error)
+                    logger.error(f"OpenAI API Error: {error_str}")
+                    raise error
                 await asyncio.sleep(2 ** attempt)
                 
             except Exception as e:
@@ -100,7 +109,6 @@ class ParallelLLM:
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
-        temperature: float,
         **kwargs
     ) -> List[Any]:
         """Process multiple parallel requests to the same prompt."""
@@ -113,7 +121,6 @@ class ParallelLLM:
                         model=model,
                         messages=messages,
                         response_format=response_format,
-                        temperature=temperature,
                         **kwargs
                     ),
                     name=f"processor_{i}"
@@ -236,7 +243,6 @@ Please analyze these responses and return the best one or synthesize a better re
                 model=model,
                 messages=messages,
                 response_format=response_format,
-                temperature=temperature,
                 **kwargs
             )
             
@@ -269,7 +275,6 @@ Please analyze these responses and return the best one or synthesize a better re
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
-        temperature: float = 0,
         **kwargs
     ) -> Any:
         """
@@ -289,7 +294,6 @@ Please analyze these responses and return the best one or synthesize a better re
             model=model,
             messages=messages,
             response_format=response_format,
-            temperature=temperature,
             **kwargs
         )
 

@@ -41,7 +41,6 @@ class ParallelCompletionInterface:
         model: str,
         messages: List[Dict[str, str]],
         response_format: Type[BaseModel],
-        temperature: float = 0,
         **kwargs
     ) -> ParallelCompletion:
         """
@@ -61,7 +60,6 @@ class ParallelCompletionInterface:
             model=model,
             messages=messages,
             response_format=response_format,
-            temperature=temperature,
             **kwargs
         )
         

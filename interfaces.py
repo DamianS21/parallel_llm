@@ -61,7 +61,6 @@ class ParallelCompletionInterface:
             model=model,
             messages=messages,
             response_format=response_format,
-            temperature=temperature,
             **kwargs
         )
         
