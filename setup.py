@@ -18,14 +18,14 @@ core_requirements = [
 ]
 
 setup(
-    name="parallel-gpt-framework",
+    name="parallel-llm",
     version="1.0.0",
-    author="Parallel GPT Framework Team",
+    author="Parallel LLM Framework Team",
     author_email="contact@parallalgpt.com",
-    description="A framework for parallelizing GPT structured output processing with decision making",
+    description="A framework for parallelizing GPT structured output processing for better decision making",
     long_description=open("README.md", "r", encoding="utf-8").read() if os.path.exists("README.md") else "",
     long_description_content_type="text/markdown",
-    url="https://github.com/your-org/parallel-gpt-framework",
+    url="https://github.com/DamianS21/parallel-gpt-framework",
     packages=find_packages(),
     py_modules=["parallel_gpt_framework"],
     classifiers=[
@@ -59,7 +59,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "parallel-gpt-example=example_usage:main",
+            "parallel-llm-example=example_usage:main",
         ],
     },
     include_package_data=True,
