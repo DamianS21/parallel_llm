@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ```python
 import asyncio
 from pydantic import BaseModel, Field
-from parallel_gpt_framework import ParallelGPTFramework
+from parallel_llm import ParallelGPTFramework
 
 class ProductRecommendation(BaseModel):
     product_name: str = Field(description="Name of the recommended product")
