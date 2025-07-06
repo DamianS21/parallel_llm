@@ -1,6 +1,7 @@
 # Parallel GPT Framework
 
 Simple framework for parallelizing GPT structured output processing with automatic decision making. This framework allows you to run multiple parallel requests to OpenAI's GPT models and uses an intelligent decision maker to select or synthesize the best response.
+![image](https://github.com/user-attachments/assets/3fa29587-aef6-463d-990c-0932b94abc68)
 
 ## Features
 
@@ -205,35 +206,11 @@ framework = create_framework(
 ```
 
 
-## Error Types
-
-```python
-ParallelGPTError          # Base exception
-ConfigurationError        # Invalid configuration
-ProcessingError          # Parallel processing failure
-DecisionMakerError       # Decision maker failure
-ValidationError          # Response validation failure
-APIError                 # OpenAI API errors
-TimeoutError            # Request timeout errors
-RateLimitError          # Rate limit errors
-```
-
-## Best Practices
-
-1. **Choose the right calling method**:
-   - Use drop-in replacement for existing OpenAI code
-   - Use direct method for new implementations
-2. **Set appropriate timeouts** based on your use case (20-60 seconds)
-3. **Use 3-5 processors** for optimal balance of speed and cost
-4. **Handle errors gracefully** with try-catch blocks
-5. **Monitor API usage** to manage costs effectively
-
 ## Requirements
 
 - Python 3.8+
-- OpenAI API key with access to structured outputs
+- OpenAI API key
 - Dependencies: `openai>=1.35.0`, `pydantic>=2.0.0`
-
 
 ## Development
 
